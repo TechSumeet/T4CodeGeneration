@@ -1,0 +1,379 @@
+﻿<#@ template language="C#" hostspecific="true" debug="True" #>
+<#@ assembly name="System.Core" #>
+<#@ assembly name="System.Data" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.IO" #>
+
+<#
+	//**********************************************************************************************
+    // This T4 generates A Single DBContext class for all the models and saves the file to the specified folder.
+    //**********************************************************************************************
+	var path = Path.GetDirectoryName(@"One.tt");
+	DirectoryInfo d1 = new DirectoryInfo(@".");
+	var f = d1.GetFiles("*.csproj");
+	string baseNameSpace = Path.GetFileNameWithoutExtension(f[0].Name);
+
+    // The destination folder for the generated Models.
+        string modelDestinationFolder = "Models";
+	string controllerDestinationFolder = "Controllers";
+	string repositoryDestinationFolder = "Repositories";
+	string DbContextDestinationFolder = "DatabaseContext";
+
+	string modelclassNamespace = baseNameSpace + "." + modelDestinationFolder;
+	string repositoryclassNamespace = baseNameSpace + "." + repositoryDestinationFolder;
+	string controllerclassNamespace = baseNameSpace + "." + controllerDestinationFolder;
+	string DbContextclassNamespace = baseNameSpace + "." + "DbContext";
+
+	
+	//var actualDir = System.IO.Directory.GetParent(path);
+	// Get all Model classes files
+    DirectoryInfo d = new DirectoryInfo(@"Models");
+    FileInfo[] Files = d.GetFiles("*.cs"); 
+
+    string entityName = string.Empty;
+    string directoryName = string.Empty;
+    string fileName = string.Empty;
+		
+#>
+
+namespace <#= DbContextclassNamespace #>
+{
+	/// <summary>
+	/// DBContext CLass
+	/// NOTE: This class is generated from a T4 template - you should not modify it manually.
+	/// </summary>
+	using <#= modelclassNamespace #>;
+	using Microsoft.EntityFrameworkCore;
+
+    public class <#= DbContextDestinationFolder #> : DbContext
+    {
+        string connString = "Server=192.168.3.60;Database=Employee;User Id=SA;Password=Pramati@098";
+<#
+	foreach (var file in Files)
+    {
+		entityName = System.IO.Path.GetFileNameWithoutExtension(file.Name);
+#>
+		public DbSet<<#= entityName #>> <#= entityName #> { get; set; }		
+<#
+    }
+#>
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            optionsBuilder.UseSqlServer(connString);
+        }
+    }
+}
+
+<#    
+        // Write new DB Context class to its own file
+        SaveOutput(DbContextDestinationFolder + ".cs", DbContextDestinationFolder);
+#>
+
+<# 
+	//**********************************************************************************************
+    // This T4 generates Controller classes for each model and saves them to the specified folder.
+	// One file per table/POCO.
+    //**********************************************************************************************
+	
+	foreach (var file in Files)
+    {
+		entityName = System.IO.Path.GetFileNameWithoutExtension(file.Name);
+        directoryName = file.DirectoryName;
+        fileName = directoryName + "\\" + controllerDestinationFolder + "\\" + entityName + ".cs";	
+#>
+using System;
+using Microsoft.AspNetCore.Mvc;
+using System.Collections.Generic;
+namespace <#= controllerclassNamespace #>
+{
+using <#= repositoryclassNamespace #>;
+using <#= modelclassNamespace #>;
+/// <summary>
+/// <#= entityName #> controller
+/// NOTE: This class is generated from a T4 template - you should not modify it manually.
+/// </summary>
+[Route("api/[controller]")]
+public class <#= entityName #>Controller : Controller
+{
+	private  <#= entityName #>Repository <#= Pascal(entityName) #>Repository;
+    /// <summary>
+    /// Constructor
+    /// </summary>
+    public <#= entityName #>Controller()
+    {
+        <#= Pascal(entityName) #>Repository = new <#= entityName #>Repository();
+    }
+
+    // GET api/<#= Pascal(entityName) #>
+    [HttpGet]
+    public IEnumerable<<#= entityName #>> Get()
+    {
+        var <#= Pascal(entityName) #>s = <#= Pascal(entityName) #>Repository.GetAll();
+
+        return <#= Pascal(entityName) #>s;
+    }
+
+    // GET api/<#= Pascal(entityName) #>/id
+    [HttpGet("{id}")]    
+    public <#= entityName #> GetById(int id)
+    {
+        var <#= Pascal(entityName) #> = <#= Pascal(entityName) #>Repository.GetById(id);
+
+        return <#= Pascal(entityName) #>;
+    }
+
+    // POST api/<#= Pascal(entityName) #>
+    [HttpPost]
+    public void Post([FromBody]<#= entityName #> <#= Pascal(entityName) #>)
+    {
+        <#= Pascal(entityName) #>Repository.Add(<#= Pascal(entityName) #>);
+    }
+
+    // PUT api/<#= Pascal(entityName) #>
+    [HttpPut]
+    public void Put([FromBody]<#= entityName #> <#= Pascal(entityName) #>)
+    {
+		<#= Pascal(entityName) #>Repository.Update(<#= Pascal(entityName) #>);
+    }
+
+     // DELETE api/<#= Pascal(entityName) #>/id
+    [HttpDelete("{id}")]
+    public void Delete(int id)
+    {
+		<#= Pascal(entityName) #>Repository.Delete(id);
+    }
+}
+}
+
+<#
+    
+        // Write new POCO class to its own file
+        SaveOutput(file.Name.Split('.')[0].ToString() + "Controller.cs", controllerDestinationFolder);
+    }
+    
+#>
+<# 
+	//**********************************************************************************************
+    // This T4 generates Repository class file each model saves them to the specified folder.
+	// One file per table/POCO.
+    //**********************************************************************************************
+	foreach (var file in Files)
+    {
+		entityName = System.IO.Path.GetFileNameWithoutExtension(file.Name).Replace("Controller", "");
+        directoryName = file.DirectoryName;
+        fileName = directoryName + "\\" + repositoryDestinationFolder + "\\" + entityName + ".cs";	
+#>
+
+using System.Data;
+using System.Data.SqlClient;
+using System.Linq;
+using System.Reflection;
+using System.Collections.Generic;
+using Microsoft.EntityFrameworkCore;
+namespace <#= repositoryclassNamespace #>
+{
+using <#= modelclassNamespace #>;
+using <#= DbContextclassNamespace #>;
+/// <summary>
+/// <#= entityName #> Repository
+/// NOTE: This class is generated from a T4 template - you should not modify it manually.
+/// </summary>
+public class <#= entityName #>Repository
+{
+	<#= DbContextDestinationFolder #> dbContext;
+
+    /// <summary>
+    /// Constructor
+    /// </summary>
+    public <#= entityName #>Repository()
+    {
+        dbContext = new <#= DbContextDestinationFolder #>();
+    }
+
+	/// <summary>
+    /// Get <#= (entityName) #> All
+    /// </summary>
+    public List<<#= (entityName) #>> GetAll()
+    {
+            List<<#= (entityName) #>> <#= Pascal(entityName) #>s = null;
+
+            try
+            {
+                <#= Pascal(entityName) #>s = dbContext.<#= (entityName) #>.ToList();
+            }
+            catch
+            {
+
+            }
+            finally
+            {
+
+            }
+
+        return <#= Pascal(entityName) #>s;
+    }
+
+    /// <summary>
+    /// Get <#= (entityName) #> by Id
+    /// </summary>
+    public <#= (entityName) #> GetById(int id)
+    {
+            <#= (entityName) #> <#= Pascal(entityName) #> = null;
+            try
+            {
+                <#= Pascal(entityName) #> = dbContext.<#= (entityName) #>.FirstOrDefault(e => e.Id == id);
+            }
+            catch
+            {
+
+            }
+            finally
+            {
+
+            }
+
+        return <#= Pascal(entityName) #>;
+    }
+
+    /// <summary>
+    /// Add an <#= (entityName) #>
+    /// </summary>
+    public void Add(<#= entityName #> <#= Pascal(entityName) #>)
+    {
+			try
+            {
+                var result = dbContext.<#= entityName #>.Add(<#= Pascal(entityName) #>);
+                dbContext.SaveChanges();                
+            }
+            catch
+            {
+
+            }
+            finally
+            {
+
+            }
+    }
+
+    /// <summary>
+    /// Update an <#= (entityName) #>
+    /// </summary>
+    public void Update(<#= entityName #> <#= Pascal(entityName) #>)
+    {
+       try
+            {
+                dbContext.Entry(<#= Pascal(entityName) #>).State = EntityState.Deleted;
+                var result = dbContext.<#= entityName #>.Update(<#= Pascal(entityName) #>);
+                dbContext.SaveChanges();            
+            }
+            catch
+            {
+
+            }
+            finally
+            {
+
+            }
+    }
+
+    /// <summary>
+    /// Delete an <#= (entityName) #>
+    /// </summary>
+    public void Delete(int id)
+    {
+		try
+            {
+                <#= (entityName) #> <#= (Pascal(entityName)) #> = GetById(id);
+                dbContext.Entry(<#= (Pascal(entityName)) #>).State = EntityState.Deleted;
+                var result = dbContext.<#= (entityName) #>.Remove(<#= (Pascal(entityName)) #>);
+                dbContext.SaveChanges();
+            }
+            catch
+            {
+
+            }
+            finally
+            {
+
+            }      
+     }
+}
+}
+
+<#
+    
+        // Write new POCO class to its own file
+        SaveOutput(file.Name.Split('.')[0].ToString() + "Repository.cs", repositoryDestinationFolder);
+    }
+    
+#>
+
+<#
+	//// ========================================================= Common Methods used only within TT file code ========================================================= ////
+#>
+
+<#+
+
+    public string Pascal(string input)
+    {
+        return input.ToCharArray()[0].ToString().ToLowerInvariant() + input.Substring(1);
+    }
+
+    public static string GetNetDataType(string sqlDataTypeName)
+    {
+        switch (sqlDataTypeName.ToLower())
+        {
+            case "bigint":
+                return "Int64";
+            case "binary":
+            case "image":
+            case "varbinary":
+                return "byte[]";
+            case "bit":
+                return "bool";
+            case "char":
+                return "char";
+            case "datetime":
+            case "smalldatetime":
+                return "DateTime";
+            case "decimal":
+            case "money":
+            case "numeric":
+                return "decimal";
+            case "float":
+                return "double";
+            case "int":
+                return "int";
+            case "nchar":
+            case "nvarchar":
+            case "text":
+            case "varchar":
+            case "xml":
+                return "string";
+            case "real":
+                return "single";
+            case "smallint":
+                return "Int16";
+            case "tinyint":
+                return "byte";
+            case "uniqueidentifier":
+                return "Guid";
+            default:
+                return null;
+        }
+    }
+
+    void SaveOutput(string outputFileName, string destinationFolder)
+    {
+		var path = Path.GetDirectoryName(this.Host.TemplateFile);
+		//var actualDir = System.IO.Directory.GetParent(dir);
+        // Write to destination folder
+        string templateDirectory = Path.Combine(path, destinationFolder);
+		System.IO.Directory.CreateDirectory(templateDirectory);		
+        string outputFilePath = Path.Combine(templateDirectory, outputFileName);
+        File.Delete(outputFilePath);
+        File.WriteAllText(outputFilePath, this.GenerationEnvironment.ToString()); 
+        // Flush generation
+        this.GenerationEnvironment.Remove(0, this.GenerationEnvironment.Length);
+    }
+#>
